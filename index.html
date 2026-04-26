@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CodeAlpha AI Music Generator</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+  <canvas id="canvas"></canvas>
+
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="badge"><span class="dot"></span>AI Powered</div>
+      <h1>CodeAlpha <span class="grad">AI Music</span> Generator</h1>
+      <p class="sub">LSTM Deep Learning • Classical Piano • Python 3.10</p>
+    </div>
+
+    <!-- Main Card -->
+    <div class="card">
+
+      <!-- Visualizer -->
+      <div class="viz" id="viz">
+        <div class="vb" style="--d:0.00s;--h:10px"></div>
+        <div class="vb" style="--d:0.04s;--h:20px"></div>
+        <div class="vb" style="--d:0.08s;--h:32px"></div>
+        <div class="vb" style="--d:0.12s;--h:14px"></div>
+        <div class="vb" style="--d:0.16s;--h:38px"></div>
+        <div class="vb" style="--d:0.20s;--h:20px"></div>
+        <div class="vb" style="--d:0.24s;--h:44px"></div>
+        <div class="vb" style="--d:0.28s;--h:26px"></div>
+        <div class="vb" style="--d:0.32s;--h:48px"></div>
+        <div class="vb" style="--d:0.36s;--h:30px"></div>
+        <div class="vb" style="--d:0.40s;--h:44px"></div>
+        <div class="vb" style="--d:0.36s;--h:26px"></div>
+        <div class="vb" style="--d:0.32s;--h:38px"></div>
+        <div class="vb" style="--d:0.28s;--h:18px"></div>
+        <div class="vb" style="--d:0.24s;--h:32px"></div>
+        <div class="vb" style="--d:0.20s;--h:14px"></div>
+        <div class="vb" style="--d:0.16s;--h:24px"></div>
+        <div class="vb" style="--d:0.12s;--h:10px"></div>
+      </div>
+
+      <!-- Status -->
+      <div class="status">
+        <span id="sIcon">🎹</span>
+        <span id="sText">Click generate to compose your unique music</span>
+      </div>
+
+      <!-- Slider -->
+      <div class="sldr-row">
+        <span class="sldr-lbl">🎨 Creativity</span>
+        <input type="range" class="sldr" id="tSldr"
+               min="0.3" max="1.2" step="0.1" value="0.8"
+               oninput="onTemp(this.value)"/>
+        <span class="sldr-val" id="tVal">0.8</span>
+      </div>
+      <div class="sldr-hints">
+        <span>🎯 Structured</span>
+        <span>🎲 Experimental</span>
+      </div>
+
+      <!-- Generate Button -->
+      <button class="gbtn" id="gbtn" onclick="gen()">
+        <span id="bIcon">✨</span>
+        <span id="bText">Generate New Music</span>
+      </button>
+
+      <!-- Player -->
+      <div id="player" style="display:none">
+        <div class="divider"></div>
+
+        <div class="phead">
+          <div class="thumb" id="thumb">🎹</div>
+          <div class="tinfo">
+            <div class="tname">AI Composition</div>
+            <div class="tmeta">Classical Piano • LSTM Generated</div>
+          </div>
+          <a class="dlbtn" href="/download" download title="Download">⬇</a>
+        </div>
+
+        <div class="prog" id="prog" onclick="seek(event)">
+          <div class="prog-fill" id="pFill"></div>
+        </div>
+        <div class="trow">
+          <span id="cur">0:00</span>
+          <span id="dur">0:00</span>
+        </div>
+
+        <div class="ctrls">
+          <button class="cbtn" onclick="restart()" title="Restart same music">⏮</button>
+          <button class="pbtn" id="pbtn" onclick="toggle()">▶</button>
+          <button class="cbtn" onclick="spd()">⚡<span id="spdL">1×</span></button>
+        </div>
+
+        <div class="vol">
+          <span>🔈</span>
+          <input type="range" class="sldr" min="0" max="1"
+                 step="0.01" value="1" oninput="setVol(this.value)"/>
+          <span>🔊</span>
+        </div>
+
+        <div class="midi-note" id="midiNote" style="display:none">
+          🎵 MIDI generated — press ⬇ Download to save and play in VLC
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Feature Cards -->
+    <div class="feats">
+      <div class="feat">
+        <div class="ficon">🧠</div>
+        <div class="ftitle">3-Layer LSTM</div>
+        <div class="fdesc">512 → 512 → 256 units with dropout regularization</div>
+      </div>
+      <div class="feat">
+        <div class="ficon">🎼</div>
+        <div class="ftitle">Always Unique</div>
+        <div class="fdesc">Temperature sampling creates a new melody every time</div>
+      </div>
+      <div class="feat">
+        <div class="ficon">⬇️</div>
+        <div class="ftitle">Download Free</div>
+        <div class="fdesc">Save your AI music as WAV or MIDI anytime</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Built with Python 3.10 • TensorFlow • Flask • music21
+    </div>
+
+  </div>
+
+  <audio id="aud"></audio>
+
+  <script>
+    // ── Flying Particles ──
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    let W, H;
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const particles = Array.from({length: 80}, () => mkP());
+
+    function mkP() {
+      return {
+        x    : Math.random() * (W || window.innerWidth),
+        y    : Math.random() * (H || window.innerHeight),
+        r    : Math.random() * 2 + 0.5,
+        dx   : (Math.random() - 0.5) * 0.4,
+        dy   : -(Math.random() * 0.5 + 0.2),
+        alpha: Math.random() * 0.5 + 0.1
+      };
+    }
+
+    function drawP() {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(167,139,250,${p.alpha})`;
+        ctx.fill();
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.y < -5 || p.x < -5 || p.x > W + 5)
+          Object.assign(p, mkP(), {y: H + 5});
+      });
+      requestAnimationFrame(drawP);
+    }
+    drawP();
+
+    // ── Player ──
+    const aud   = document.getElementById('aud');
+    let playing = false;
+    let speed   = 1.0;
+    const spds  = [1.0, 1.25, 1.5, 0.75];
+    let temp    = 0.8;
+
+    function onTemp(v) {
+      temp = parseFloat(v);
+      document.getElementById('tVal').textContent = parseFloat(v).toFixed(1);
+    }
+
+    async function gen() {
+      const btn = document.getElementById('gbtn');
+      btn.disabled = true;
+      document.getElementById('bIcon').textContent = '⏳';
+      document.getElementById('bText').textContent = 'Composing... please wait';
+      setSt('🎵', 'AI is composing your unique piece...');
+      setViz(true);
+
+      try {
+        const res  = await fetch('/generate', {
+          method : 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body   : JSON.stringify({temperature: temp})
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          document.getElementById('player').style.display = 'block';
+
+          if (data.audio_type === 'midi') {
+            document.getElementById('midiNote').style.display = 'block';
+            setSt('✅', 'MIDI ready! Download to play in VLC.');
+            setViz(false);
+          } else {
+            document.getElementById('midiNote').style.display = 'none';
+            aud.src = data.audio_url + '?t=' + Date.now();
+            aud.load();
+            aud.oncanplay = () => {
+              document.getElementById('dur').textContent = fmt(aud.duration);
+              setSt('✅', 'Ready! Press play to listen.');
+              aud.play();
+              playing = true;
+              document.getElementById('pbtn').textContent = '⏸';
+              spin(true);
+            };
+          }
+        } else {
+          setSt('❌', 'Error: ' + data.message);
+          setViz(false);
+        }
+      } catch(e) {
+        setSt('❌', 'Cannot connect to Flask server!');
+        setViz(false);
+      }
+
+      btn.disabled = false;
+      document.getElementById('bIcon').textContent = '✨';
+      document.getElementById('bText').textContent = 'Generate New Music';
+    }
+
+    // ⏮ Restart — same music 0 se
+    function restart() {
+      aud.currentTime = 0;
+      if (!playing) {
+        aud.play();
+        playing = true;
+        document.getElementById('pbtn').textContent = '⏸';
+        setViz(true);
+        spin(true);
+      }
+    }
+
+    function toggle() {
+      if (playing) {
+        aud.pause();
+        document.getElementById('pbtn').textContent = '▶';
+        setViz(false); spin(false); playing = false;
+      } else {
+        aud.play();
+        document.getElementById('pbtn').textContent = '⏸';
+        setViz(true); spin(true); playing = true;
+      }
+    }
+
+    function spd() {
+      const i = spds.indexOf(speed);
+      speed   = spds[(i + 1) % spds.length];
+      aud.playbackRate = speed;
+      document.getElementById('spdL').textContent = speed + '×';
+    }
+
+    function setVol(v) { aud.volume = v; }
+
+    function seek(e) {
+      const b = document.getElementById('prog');
+      aud.currentTime = (e.offsetX / b.offsetWidth) * aud.duration;
+    }
+
+    aud.ontimeupdate = () => {
+      const r = aud.currentTime / aud.duration || 0;
+      document.getElementById('pFill').style.width = (r * 100) + '%';
+      document.getElementById('cur').textContent   = fmt(aud.currentTime);
+      if (playing) document.querySelectorAll('.vb').forEach(b => {
+        b.style.setProperty('--h', (Math.random() * 38 + 8) + 'px');
+      });
+    };
+
+    aud.onended = () => {
+      document.getElementById('pbtn').textContent = '▶';
+      setViz(false); spin(false); playing = false;
+    };
+
+    function setSt(i, t) {
+      document.getElementById('sIcon').textContent = i;
+      document.getElementById('sText').textContent = t;
+    }
+    function setViz(on) {
+      document.querySelectorAll('.vb').forEach(b => b.classList.toggle('act', on));
+    }
+    function spin(on) {
+      document.getElementById('thumb').classList.toggle('spin', on);
+    }
+    function fmt(s) {
+      if (!s || isNaN(s)) return '0:00';
+      return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+    }
+  </script>
+</body>
+</html>
