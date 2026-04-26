@@ -8,6 +8,11 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
+
+# Speed optimization
+tf.config.threading.set_intra_op_parallelism_threads(4)
+tf.config.threading.set_inter_op_parallelism_threads(4)
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from music21 import note, chord, stream, instrument
@@ -20,6 +25,7 @@ NOTE_TO_INT = None
 INT_TO_NOTE = None
 N_VOCAB     = None
 SEQ_LEN     = None
+PREDICT_FN  = None  # Compiled prediction function
 
 
 def build_model(n_vocab, sequence_length):
@@ -39,7 +45,7 @@ def build_model(n_vocab, sequence_length):
 
 
 def load_everything():
-    global MODEL, NOTES, NOTE_TO_INT, INT_TO_NOTE, N_VOCAB, SEQ_LEN
+    global MODEL, NOTES, NOTE_TO_INT, INT_TO_NOTE, N_VOCAB, SEQ_LEN, PREDICT_FN
     print("=" * 45)
     print("  🎵 CodeAlpha AI Music Generator")
     print("=" * 45)
@@ -48,38 +54,60 @@ def load_everything():
     if missing:
         print(f"❌ Missing: {missing}")
         return False
+
     with open("notes.pkl", "rb") as f:
         NOTES = pickle.load(f)
     print(f"✅ Notes: {len(NOTES)}")
+
     with open("vocab.pkl", "rb") as f:
         pitchnames, NOTE_TO_INT, INT_TO_NOTE, N_VOCAB, SEQ_LEN = pickle.load(f)
     print(f"✅ Vocab: {N_VOCAB} | SeqLen: {SEQ_LEN}")
+
     MODEL = build_model(N_VOCAB, SEQ_LEN)
     MODEL.load_weights("model_weights.weights.h5")
-    print("✅ Model ready!")
+
+    # Warm up model — first prediction slow hoti hai
+    print("⚡ Warming up model...")
+    dummy = np.zeros((1, SEQ_LEN, 1))
+    MODEL.predict(dummy, verbose=0)
+    print("✅ Model warmed up!")
+
+    # TF Function compile karo — fast prediction
+    @tf.function(reduce_retracing=True)
+    def fast_predict(x):
+        return MODEL(x, training=False)
+
+    PREDICT_FN = fast_predict
+    print("✅ Fast prediction ready!")
     print("=" * 45)
     print("  🌐 Open: http://127.0.0.1:5000")
     print("=" * 45)
     return True
 
 
-def generate_notes(temperature=0.8, num_notes=100):
+def generate_notes(temperature=0.8, num_notes=50):
     start   = random.randint(0, len(NOTES) - SEQ_LEN - 1)
     pattern = [NOTE_TO_INT[n] for n in NOTES[start:start + SEQ_LEN]]
     generated = []
-    print(f"🎵 Generating {num_notes} notes...")
+
+    print(f"🎵 Generating {num_notes} notes (fast mode)...")
+
     for i in range(num_notes):
-        x          = np.reshape(pattern, (1, len(pattern), 1)) / float(N_VOCAB)
-        prediction = MODEL.predict(x, verbose=0)[0]
+        # Fast prediction
+        x          = np.reshape(pattern, (1, SEQ_LEN, 1)).astype(np.float32)
+        x          = x / float(N_VOCAB)
+        prediction = PREDICT_FN(x).numpy()[0]
+
+        # Temperature sampling
         prediction = np.log(prediction + 1e-8) / temperature
         prediction = np.exp(prediction) / np.sum(np.exp(prediction))
         idx        = np.random.choice(len(prediction), p=prediction)
+
         generated.append(INT_TO_NOTE[idx])
         pattern.append(idx)
         pattern = pattern[1:]
-        if (i + 1) % 25 == 0:
-            print(f"  {i+1}/{num_notes} done...")
-    print("✅ Notes generated!")
+
+    print(f"✅ {num_notes} notes generated!")
     return generated
 
 
@@ -128,7 +156,7 @@ def generate():
         temperature = float(data.get("temperature", 0.8))
         temperature = max(0.3, min(1.2, temperature))
 
-        generated = generate_notes(temperature=temperature, num_notes=100)
+        generated = generate_notes(temperature=temperature, num_notes=50)
         os.makedirs("static/generated", exist_ok=True)
 
         midi_path = "static/generated/output.mid"
@@ -140,11 +168,11 @@ def generate():
         if os.path.exists(wav_path):
             audio_url  = "/static/generated/output.wav"
             audio_type = "wav"
-            print("✅ WAV found — serving to browser!")
+            print("✅ WAV serving to browser!")
         else:
             audio_url  = "/static/generated/output.mid"
             audio_type = "midi"
-            print("⚠️ WAV not found — place output.wav in static/generated/")
+            print("⚠️ WAV not found!")
 
         return jsonify({
             "success"   : True,
@@ -170,6 +198,6 @@ def download():
 
 if __name__ == "__main__":
     if load_everything():
-        app.run(debug=True, host="0.0.0.0", port=5000)
+        app.run(debug=False, host="0.0.0.0", port=5000)
     else:
         print("❌ Fix missing files!")
